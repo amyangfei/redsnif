@@ -1,0 +1,8 @@
+*.log
+*.pid
+*.ini
+tags
+dump.rdb
+build/
+
+cmd/redsnif/redsnif
