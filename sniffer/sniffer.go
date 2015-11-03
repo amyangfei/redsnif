@@ -2,7 +2,9 @@ package sniffer
 
 import (
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"net"
 	"time"
 )
 
@@ -12,10 +14,19 @@ type SniffConfig struct {
 	Promiscuous   bool
 	Timeout       time.Duration
 	Filter        string
-	PacketProcess func(*gopacket.PacketSource)
+	PacketProcess func(gopacket.Packet) *PacketInfo
 }
 
-func PacketSniff(snifCfg *SniffConfig) error {
+type PacketInfo struct {
+	SrcIP   net.IP
+	DstIP   net.IP
+	SrcPort layers.TCPPort
+	DstPort layers.TCPPort
+	Payload []byte
+	err     error
+}
+
+func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
 	// Open device
 	handle, err := pcap.OpenLive(
 		snifCfg.Device, snifCfg.Snaplen, snifCfg.Promiscuous, snifCfg.Timeout)
@@ -31,6 +42,11 @@ func PacketSniff(snifCfg *SniffConfig) error {
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	snifCfg.PacketProcess(packetSource)
+	for packet := range packetSource.Packets() {
+		pinfo := snifCfg.PacketProcess(packet)
+		if pinfo != nil {
+			c <- pinfo
+		}
+	}
 	return nil
 }
