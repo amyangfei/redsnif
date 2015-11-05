@@ -7,10 +7,10 @@ src_dst=$GOPATH/src/github.com/amyangfei/redsnif
 
 rm -rf $src_dst
 mkdir -p $src_dst
-cp -r $cur/../sniffer $src_dst
+cp -r $cur/.. $src_dst
 
-cd $src_dst/sniffer
-echo "installing redsnif/sniffer"
+cd $src_dst/rsniffer
+echo "installing redsnif/rsniffer"
 go install
 
 echo "done!"

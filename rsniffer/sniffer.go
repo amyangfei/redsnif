@@ -1,4 +1,4 @@
-package sniffer
+package rsniffer
 
 import (
 	"github.com/google/gopacket"

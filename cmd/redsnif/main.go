@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	redsnif "github.com/amyangfei/redsnif/sniffer"
+	redsnif "github.com/amyangfei/redsnif/rsniffer"
 	"strings"
 	"time"
 )
