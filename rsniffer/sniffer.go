@@ -15,6 +15,7 @@ type SniffConfig struct {
 	Timeout       time.Duration
 	Filter        string
 	PacketProcess func(gopacket.Packet) *PacketInfo
+	UseZeroCopy   bool
 }
 
 type PacketInfo struct {
@@ -41,11 +42,21 @@ func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
 		return err
 	}
 
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	for packet := range packetSource.Packets() {
-		pinfo := snifCfg.PacketProcess(packet)
-		if pinfo != nil {
-			c <- pinfo
+	if snifCfg.UseZeroCopy {
+		packetSource := NewZeroCopyPacketSource(handle, handle.LinkType())
+		for packet := range packetSource.Packets() {
+			pinfo := snifCfg.PacketProcess(packet)
+			if pinfo != nil {
+				c <- pinfo
+			}
+		}
+	} else {
+		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+		for packet := range packetSource.Packets() {
+			pinfo := snifCfg.PacketProcess(packet)
+			if pinfo != nil {
+				c <- pinfo
+			}
 		}
 	}
 	return nil

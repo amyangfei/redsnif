@@ -17,6 +17,7 @@ func main() {
 		Timeout:       time.Duration(time.Second * 5),
 		Filter:        "tcp and port 6379",
 		PacketProcess: redsnif.PacketProcess,
+		UseZeroCopy:   true,
 	}
 	c := make(chan *redsnif.PacketInfo)
 	go func() {
