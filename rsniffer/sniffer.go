@@ -1,30 +1,21 @@
 package rsniffer
 
 import (
+	"fmt"
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
+	_ "github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
 	"time"
 )
 
 type SniffConfig struct {
-	Device        string
-	Snaplen       int32
-	Promiscuous   bool
-	Timeout       time.Duration
-	Filter        string
-	PacketProcess func(gopacket.Packet) *PacketInfo
-	UseZeroCopy   bool
-}
-
-type PacketInfo struct {
-	SrcIP   net.IP
-	DstIP   net.IP
-	SrcPort layers.TCPPort
-	DstPort layers.TCPPort
-	Payload []byte
-	err     error
+	Device      string
+	Snaplen     int32
+	Promiscuous bool
+	Timeout     time.Duration
+	Host        string
+	Port        int
+	UseZeroCopy bool
 }
 
 func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
@@ -37,15 +28,18 @@ func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
 	defer handle.Close()
 
 	// Set filter
-	err = handle.SetBPFFilter(snifCfg.Filter)
+	filter := fmt.Sprintf("host %s and port %d", snifCfg.Host, snifCfg.Port)
+	err = handle.SetBPFFilter(filter)
 	if err != nil {
 		return err
 	}
 
+	sp := NewSessionPool()
+
 	if snifCfg.UseZeroCopy {
 		packetSource := NewZeroCopyPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			pinfo := snifCfg.PacketProcess(packet)
+			pinfo := PacketProcess(packet, sp, snifCfg)
 			if pinfo != nil {
 				c <- pinfo
 			}
@@ -53,7 +47,7 @@ func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
 	} else {
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			pinfo := snifCfg.PacketProcess(packet)
+			pinfo := PacketProcess(packet, sp, snifCfg)
 			if pinfo != nil {
 				c <- pinfo
 			}
