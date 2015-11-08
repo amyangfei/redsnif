@@ -31,8 +31,14 @@ func main() {
 		payload := string(info.Payload)
 		payload = strings.Replace(payload, "\r", "\\r", -1)
 		payload = strings.Replace(payload, "\n", "\\n", -1)
-		fmt.Printf("src %s:%d dst %s:%d payload %s seq %d sessionid %s\n",
+		fmt.Printf("src %s:%d dst %s:%d payload %s seq %d sessionid %s ",
 			info.SrcIP, info.SrcPort, info.DstIP, info.DstPort, payload,
 			info.Seq, hex.EncodeToString(info.SessionID))
+		rd, err := info.GetRespData()
+		if err != nil {
+			panic(err)
+		}
+		cmd, err := rd.GetCommand()
+		fmt.Printf("cmd: %v err: %v\n", cmd, err)
 	}
 }

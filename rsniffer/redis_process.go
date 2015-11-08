@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/xiam/resp"
 	"net"
 	"time"
 )
@@ -37,7 +38,7 @@ func NewSessionPool() *SessionPool {
 }
 
 func (sp *SessionPool) GetSession(packet *PacketInfo, cfg *SniffConfig) *Session {
-	key := TCPIdentify(packet.SrcIP, packet.DstIP, packet.SrcPort, packet.DstPort, cfg.Host, cfg.Port)
+	key, _ := TCPIdentify(packet.SrcIP, packet.DstIP, packet.SrcPort, packet.DstPort, cfg.Host, cfg.Port)
 	if _, ok := sp.sessions[key]; !ok {
 		now := time.Now().Unix()
 		h := md5.New()
@@ -69,7 +70,7 @@ func PacketProcess(packet gopacket.Packet, sp *SessionPool, cfg *SniffConfig) *P
 		SrcIP, DstIP = ip.SrcIP, ip.DstIP
 		SrcPort, DstPort = tcp.SrcPort, tcp.DstPort
 		if tcp.FIN {
-			sessionKey := TCPIdentify(SrcIP, DstIP, SrcPort, DstPort, cfg.Host, cfg.Port)
+			sessionKey, _ := TCPIdentify(SrcIP, DstIP, SrcPort, DstPort, cfg.Host, cfg.Port)
 			sp.RemoveSession(sessionKey)
 			return nil
 		}
@@ -95,4 +96,14 @@ func PacketProcess(packet gopacket.Packet, sp *SessionPool, cfg *SniffConfig) *P
 		return pinfo
 	}
 	return nil
+}
+
+func (pinfo *PacketInfo) GetRespData() (*RespData, error) {
+	rd := &RespData{
+		msg: &resp.Message{},
+	}
+	if err := resp.Unmarshal(pinfo.Payload, rd.msg); err != nil {
+		return nil, err
+	}
+	return rd, nil
 }
