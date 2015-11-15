@@ -57,6 +57,7 @@ var MConfig *MainConfig
 
 var GlobalRecord *CacheOpRecord
 var Sessions map[string]*RedisSession
+var Patterns map[string]*CacheOpRecord
 
 var quit = make(chan struct{})
 
@@ -104,6 +105,10 @@ func initConfig(configFile string) error {
 func initService() error {
 	GlobalRecord = &CacheOpRecord{}
 	Sessions = map[string]*RedisSession{}
+	Patterns = map[string]*CacheOpRecord{}
+	for _, pattern := range MConfig.Redis.KeyPattern {
+		Patterns[pattern] = &CacheOpRecord{hit: 0, miss: 0, err: 0}
+	}
 	return nil
 }
 
@@ -133,15 +138,39 @@ func sniffer() {
 				cmd, _ := session.lastResp.GetCommand()
 				// last command is get
 				if strings.ToUpper(cmd.Name()) == "GET" {
+					candidates := make([]*CacheOpRecord, 0)
+					if len(cmd.Args) > 1 {
+						key := cmd.Args[1]
+						for _, prefix := range MConfig.Redis.KeyPattern {
+							if strings.HasPrefix(key, prefix) {
+								candidates = append(candidates, Patterns[prefix])
+							}
+						}
+					}
 					if !respData.IsBulk() {
 						session.record.err++
 						GlobalRecord.err++
+						if len(candidates) > 0 {
+							for _, pattern := range candidates {
+								pattern.err++
+							}
+						}
 					} else if len(respData.Msg.Bytes) == 0 {
 						session.record.miss++
 						GlobalRecord.miss++
+						if len(candidates) > 0 {
+							for _, pattern := range candidates {
+								pattern.miss++
+							}
+						}
 					} else {
 						session.record.hit++
 						GlobalRecord.hit++
+						if len(candidates) > 0 {
+							for _, pattern := range candidates {
+								pattern.hit++
+							}
+						}
 					}
 				}
 			}
@@ -159,8 +188,11 @@ func reporter() {
 			case <-ticker.C:
 				fmt.Printf("global stat: %s\n", GlobalRecord.Stat())
 				for sid, session := range Sessions {
-					fmt.Printf("session: %s, stat: %s: \n",
+					fmt.Printf("session: %s, stat: %s \n",
 						hex.EncodeToString([]byte(sid)), session.record.Stat())
+				}
+				for pattern, record := range Patterns {
+					fmt.Printf("pattern: %s, stat: %s \n", pattern, record.Stat())
 				}
 			case <-quit:
 				ticker.Stop()
