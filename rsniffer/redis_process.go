@@ -100,9 +100,9 @@ func PacketProcess(packet gopacket.Packet, sp *SessionPool, cfg *SniffConfig) *P
 
 func (pinfo *PacketInfo) GetRespData() (*RespData, error) {
 	rd := &RespData{
-		msg: &resp.Message{},
+		Msg: &resp.Message{},
 	}
-	if err := resp.Unmarshal(pinfo.Payload, rd.msg); err != nil {
+	if err := resp.Unmarshal(pinfo.Payload, rd.Msg); err != nil {
 		return nil, err
 	}
 	return rd, nil

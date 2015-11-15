@@ -1,0 +1,10 @@
+[Network]
+Device = 'docker0'
+Timeout = 2000
+snaplen = 1500
+Promiscuous = true
+UseZeroCopy = true
+
+[Redis]
+Host = '172.17.42.1'
+Port = 6379

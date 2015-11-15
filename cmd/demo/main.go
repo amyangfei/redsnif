@@ -75,6 +75,16 @@ func main() {
 			panic(err)
 		}
 		cmd, err := rd.GetCommand()
-		fmt.Printf("cmd: %v err: %v\n", cmd, err)
+		if err == nil {
+			fmt.Printf("cmd: %v\n", cmd)
+		} else if rd.IsString() {
+			fmt.Printf("type: %s string: %v\n", rd.MsgType(), rd.Msg.Status)
+		} else if rd.IsInteger() {
+			fmt.Printf("type: %s integer: %v\n", rd.MsgType(), rd.Msg.Integer)
+		} else if rd.IsError() {
+			fmt.Printf("type: %s error: %v\n", rd.MsgType(), rd.Msg.Error)
+		} else {
+			fmt.Printf("type: %s bytes: %s\n", rd.MsgType(), rd.Msg.Bytes)
+		}
 	}
 }

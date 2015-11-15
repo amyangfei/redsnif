@@ -5,4 +5,5 @@ tags
 dump.rdb
 build/
 
-cmd/redsnif/redsnif
+cmd/demo/demo
+cmd/hitrate/hitrate
