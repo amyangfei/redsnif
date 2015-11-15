@@ -4,22 +4,58 @@ import (
 	"encoding/hex"
 	"fmt"
 	redsnif "github.com/amyangfei/redsnif/rsniffer"
+	"github.com/koding/multiconfig"
+	"os"
 	"strings"
 	"time"
 )
 
+type (
+	MainConfig struct {
+		Network Network
+		Redis   Redis
+	}
+	Network struct {
+		Device      string `required:"true"`
+		Timeout     int    `default:"2000"`
+		Snaplen     int    `default:"1500"`
+		Promiscuous bool   `default:"true"`
+		UseZeroCopy bool   `default:"true"`
+	}
+	Redis struct {
+		Host string `required:"true"`
+		Port int    `required:"true"`
+	}
+)
+
 var Config *redsnif.SniffConfig
 
+func initConfig(configFile string) error {
+	m := multiconfig.NewWithPath(configFile)
+	mcfg := new(MainConfig)
+	m.MustLoad(mcfg)
+
+	Config = &redsnif.SniffConfig{}
+	Config.Device = mcfg.Network.Device
+	Config.Snaplen = int32(mcfg.Network.Snaplen)
+	Config.Timeout = time.Duration(time.Millisecond * time.Duration(mcfg.Network.Timeout))
+	Config.Promiscuous = mcfg.Network.Promiscuous
+	Config.UseZeroCopy = mcfg.Network.UseZeroCopy
+	Config.Host = mcfg.Redis.Host
+	Config.Port = mcfg.Redis.Port
+
+	return nil
+}
+
 func main() {
-	Config = &redsnif.SniffConfig{
-		Device:      "lo",
-		Snaplen:     1500,
-		Promiscuous: true,
-		Timeout:     time.Duration(time.Second * 5),
-		Host:        "127.0.0.1",
-		Port:        6379,
-		UseZeroCopy: true,
+	configFile := "config.toml"
+	if len(os.Args) > 1 {
+		configFile = os.Args[1]
 	}
+	if err := initConfig(configFile); err != nil {
+		panic(err)
+	}
+
 	c := make(chan *redsnif.PacketInfo)
 	go func() {
 		if err := redsnif.PacketSniff(Config, c); err != nil {
