@@ -13,4 +13,8 @@ cd $src_dst/rsniffer
 echo "installing redsnif/rsniffer"
 go install
 
+cd $src_dst/datahub
+echo "installing redsnif/datahub"
+go install
+
 echo "done!"

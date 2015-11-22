@@ -20,6 +20,7 @@ install_remote_dep() {
     go get -u -v github.com/google/gopacket
     go get -u -v github.com/xiam/resp
     go get -u -v github.com/koding/multiconfig
+    go get -u -v github.com/Sirupsen/logrus
 }
 
 install_local_dep() {

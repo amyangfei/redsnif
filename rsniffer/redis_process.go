@@ -18,6 +18,7 @@ type PacketInfo struct {
 	SrcPort   layers.TCPPort
 	DstPort   layers.TCPPort
 	Payload   []byte
+	IsReq     bool
 	err       error
 }
 
@@ -93,6 +94,8 @@ func PacketProcess(packet gopacket.Packet, sp *SessionPool, cfg *SniffConfig) *P
 		session := sp.GetSession(pinfo, cfg)
 		pinfo.Seq = session.counter
 		pinfo.SessionID = session.ID
+		pinfo.IsReq = (pinfo.DstIP.String() == cfg.Host) &&
+			(int(pinfo.DstPort) == cfg.Port)
 		return pinfo
 	}
 	return nil

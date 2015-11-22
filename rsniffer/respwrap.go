@@ -5,6 +5,34 @@ import (
 	"github.com/xiam/resp"
 )
 
+const (
+	KeyHit = iota
+	KeyMiss
+	KeyError
+)
+
+const (
+	RedisCmdRead = iota
+	RedisCmdWrite
+	RedisCmdReadWrite
+	RedisCmdFunc
+)
+
+var CmdsMap map[string]int = map[string]int{
+	"GET":      RedisCmdRead,
+	"GETBIT":   RedisCmdRead,
+	"GETRANGE": RedisCmdRead,
+	"HGET":     RedisCmdRead,
+	"HGETALL":  RedisCmdRead,
+	"HLEN":     RedisCmdRead,
+	"HMGET":    RedisCmdRead,
+	"HSTRLEN":  RedisCmdRead,
+	"LINDEX":   RedisCmdRead,
+	"LLEN":     RedisCmdRead,
+	"LRANGE":   RedisCmdRead,
+	"MGET":     RedisCmdRead,
+}
+
 var MsgTypeMapping = map[byte]string{
 	resp.ArrayHeader:   "Array",
 	resp.BulkHeader:    "Bulk",

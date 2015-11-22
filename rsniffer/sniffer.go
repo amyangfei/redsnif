@@ -18,12 +18,13 @@ type SniffConfig struct {
 	UseZeroCopy bool
 }
 
-func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
+func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo, ec chan error) {
 	// Open device
 	handle, err := pcap.OpenLive(
 		snifCfg.Device, snifCfg.Snaplen, snifCfg.Promiscuous, snifCfg.Timeout)
 	if err != nil {
-		return err
+		ec <- err
+		return
 	}
 	defer handle.Close()
 
@@ -31,7 +32,8 @@ func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
 	filter := fmt.Sprintf("host %s and port %d", snifCfg.Host, snifCfg.Port)
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		return err
+		ec <- err
+		return
 	}
 
 	sp := NewSessionPool()
@@ -53,5 +55,4 @@ func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo) error {
 			}
 		}
 	}
-	return nil
 }
