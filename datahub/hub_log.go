@@ -68,6 +68,7 @@ func (lh *LogHubber) AnalyzePacketInfo(pinfo *rsniffer.PacketInfo) {
 		if session.lastPacket.IsReq && session.lastResp.IsArray() {
 			cmd, _ := session.lastResp.GetCommand()
 			cmdName := strings.ToUpper(cmd.Name())
+			params := make([]map[string]interface{}, 0)
 			// last command is get
 			if cmdName == "GET" {
 				key := ""
@@ -75,23 +76,42 @@ func (lh *LogHubber) AnalyzePacketInfo(pinfo *rsniffer.PacketInfo) {
 					key = cmd.Args[1]
 				}
 				var status int
-				if !respData.IsBulk() {
+				if respData.IsError() {
 					status = rsniffer.KeyError
 				} else if len(respData.Msg.Bytes) == 0 {
 					status = rsniffer.KeyMiss
 				} else {
 					status = rsniffer.KeyHit
 				}
-				lh.logger.WithFields(logrus.Fields{
-					"cmd": cmdName,
-					"params": [...]map[string]interface{}{
-						map[string]interface{}{
+				params = append(params, map[string]interface{}{
+					"key":    key,
+					"status": status,
+				})
+			} else if cmdName == "MGET" {
+				if respData.IsError() {
+					params = append(params, map[string]interface{}{
+						"key":    0,
+						"status": rsniffer.KeyError,
+					})
+				} else {
+					for idx, key := range cmd.Args[1:] {
+						var status int
+						if len(respData.Msg.Array[idx].Bytes) == 0 {
+							status = rsniffer.KeyMiss
+						} else {
+							status = rsniffer.KeyHit
+						}
+						params = append(params, map[string]interface{}{
 							"key":    key,
 							"status": status,
-						},
-					},
-				}).Info("get key status")
+						})
+					}
+				}
 			}
+			lh.logger.WithFields(logrus.Fields{
+				"cmd":    cmdName,
+				"params": params,
+			}).Info("log_hub basic")
 		}
 		session.lastPacket = pinfo
 		session.lastResp = respData
