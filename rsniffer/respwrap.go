@@ -18,19 +18,19 @@ const (
 	RedisCmdFunc
 )
 
-var CmdsMap map[string]int = map[string]int{
-	"GET":      RedisCmdRead,
-	"GETBIT":   RedisCmdRead,
-	"GETRANGE": RedisCmdRead,
-	"HGET":     RedisCmdRead,
-	"HGETALL":  RedisCmdRead,
-	"HLEN":     RedisCmdRead,
-	"HMGET":    RedisCmdRead,
-	"HSTRLEN":  RedisCmdRead,
-	"LINDEX":   RedisCmdRead,
-	"LLEN":     RedisCmdRead,
-	"LRANGE":   RedisCmdRead,
-	"MGET":     RedisCmdRead,
+var CmdsReadReplyMap map[string]int = map[string]int{
+	"GET": RedisCmdRead,
+	//"GETBIT":   RedisCmdRead,
+	//"GETRANGE": RedisCmdRead,
+	//"HGET":     RedisCmdRead,
+	//"HGETALL":  RedisCmdRead,
+	//"HLEN":     RedisCmdRead,
+	//"HMGET":    RedisCmdRead,
+	//"HSTRLEN":  RedisCmdRead,
+	//"LINDEX":   RedisCmdRead,
+	//"LLEN":     RedisCmdRead,
+	//"LRANGE":   RedisCmdRead,
+	"MGET": RedisCmdRead,
 }
 
 var MsgTypeMapping = map[byte]string{

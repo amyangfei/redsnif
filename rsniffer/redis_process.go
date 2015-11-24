@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/xiam/resp"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -109,4 +110,57 @@ func (pinfo *PacketInfo) GetRespData() (*RespData, error) {
 		return nil, err
 	}
 	return rd, nil
+}
+
+func KeyHitAnalyze(lastRespD, currRespD *RespData) map[string]interface{} {
+	cmd, _ := lastRespD.GetCommand()
+	cmdName := strings.ToUpper(cmd.Name())
+	params := make([]map[string]interface{}, 0)
+	cmdType, ok := CmdsReadReplyMap[cmdName]
+	if !ok || cmdType != RedisCmdRead {
+		return nil
+	}
+	// last command is get
+	if cmdName == "GET" {
+		key := ""
+		if len(cmd.Args) > 1 {
+			key = cmd.Args[1]
+		}
+		var status int
+		if currRespD.IsError() {
+			status = KeyError
+		} else if len(currRespD.Msg.Bytes) == 0 {
+			status = KeyMiss
+		} else {
+			status = KeyHit
+		}
+		params = append(params, map[string]interface{}{
+			"key":    key,
+			"status": status,
+		})
+	} else if cmdName == "MGET" {
+		if currRespD.IsError() {
+			params = append(params, map[string]interface{}{
+				"key":    0,
+				"status": KeyError,
+			})
+		} else {
+			for idx, key := range cmd.Args[1:] {
+				var status int
+				if len(currRespD.Msg.Array[idx].Bytes) == 0 {
+					status = KeyMiss
+				} else {
+					status = KeyHit
+				}
+				params = append(params, map[string]interface{}{
+					"key":    key,
+					"status": status,
+				})
+			}
+		}
+	}
+	return map[string]interface{}{
+		"cmd":    cmdName,
+		"params": params,
+	}
 }

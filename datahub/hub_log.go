@@ -5,7 +5,6 @@ import (
 	"github.com/amyangfei/redsnif/rsniffer"
 	"io"
 	"log"
-	"strings"
 )
 
 type LogHubber struct {
@@ -66,52 +65,10 @@ func (lh *LogHubber) AnalyzePacketInfo(pinfo *rsniffer.PacketInfo) {
 	} else {
 		// last packet contains redis command
 		if session.lastPacket.IsReq && session.lastResp.IsArray() {
-			cmd, _ := session.lastResp.GetCommand()
-			cmdName := strings.ToUpper(cmd.Name())
-			params := make([]map[string]interface{}, 0)
-			// last command is get
-			if cmdName == "GET" {
-				key := ""
-				if len(cmd.Args) > 1 {
-					key = cmd.Args[1]
-				}
-				var status int
-				if respData.IsError() {
-					status = rsniffer.KeyError
-				} else if len(respData.Msg.Bytes) == 0 {
-					status = rsniffer.KeyMiss
-				} else {
-					status = rsniffer.KeyHit
-				}
-				params = append(params, map[string]interface{}{
-					"key":    key,
-					"status": status,
-				})
-			} else if cmdName == "MGET" {
-				if respData.IsError() {
-					params = append(params, map[string]interface{}{
-						"key":    0,
-						"status": rsniffer.KeyError,
-					})
-				} else {
-					for idx, key := range cmd.Args[1:] {
-						var status int
-						if len(respData.Msg.Array[idx].Bytes) == 0 {
-							status = rsniffer.KeyMiss
-						} else {
-							status = rsniffer.KeyHit
-						}
-						params = append(params, map[string]interface{}{
-							"key":    key,
-							"status": status,
-						})
-					}
-				}
+			fields := rsniffer.KeyHitAnalyze(session.lastResp, respData)
+			if fields != nil {
+				lh.logger.WithFields(fields).Info("log_hub basic")
 			}
-			lh.logger.WithFields(logrus.Fields{
-				"cmd":    cmdName,
-				"params": params,
-			}).Info("log_hub basic")
 		}
 		session.lastPacket = pinfo
 		session.lastResp = respData
