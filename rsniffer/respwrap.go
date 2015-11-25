@@ -6,6 +6,12 @@ import (
 )
 
 const (
+	RecordCmdOnly = iota
+	RecordParams
+	RecordReply
+)
+
+const (
 	KeyHit = iota
 	KeyMiss
 	KeyError
@@ -18,7 +24,7 @@ const (
 	RedisCmdFunc
 )
 
-var CmdsReadReplyMap map[string]int = map[string]int{
+var RedisCmds map[string]int = map[string]int{
 	"GET": RedisCmdRead,
 	//"GETBIT":   RedisCmdRead,
 	//"GETRANGE": RedisCmdRead,

@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+type AnalyzeConfig struct {
+	ReadHitAnalyze bool  // whether analyze hit/miss of readreply command
+	SaveCmdTypes   []int // command types that will be recorded
+	SaveDetail     int   // record detail: cmd only, with params or with reply
+}
+
+var BasicAnalyzeConfig *AnalyzeConfig = &AnalyzeConfig{
+	ReadHitAnalyze: true,
+	SaveCmdTypes:   []int{RedisCmdRead},
+	SaveDetail:     RecordParams,
+}
+
 type PacketInfo struct {
 	Seq       int
 	SessionID []byte
@@ -112,14 +124,11 @@ func (pinfo *PacketInfo) GetRespData() (*RespData, error) {
 	return rd, nil
 }
 
-func KeyHitAnalyze(lastRespD, currRespD *RespData) map[string]interface{} {
-	cmd, _ := lastRespD.GetCommand()
-	cmdName := strings.ToUpper(cmd.Name())
-	params := make([]map[string]interface{}, 0)
-	cmdType, ok := CmdsReadReplyMap[cmdName]
-	if !ok || cmdType != RedisCmdRead {
-		return nil
-	}
+// cmd: a Command struct represents client request to redis
+// cmdName: name of cmd
+// currRespD: a RespData struct represents the reply from redis
+func KeyHitAnalyze(cmd *Command, cmdName string, currRespD *RespData) []map[string]interface{} {
+	stat := make([]map[string]interface{}, 0)
 	// last command is get
 	if cmdName == "GET" {
 		key := ""
@@ -134,14 +143,14 @@ func KeyHitAnalyze(lastRespD, currRespD *RespData) map[string]interface{} {
 		} else {
 			status = KeyHit
 		}
-		params = append(params, map[string]interface{}{
+		stat = append(stat, map[string]interface{}{
 			"key":    key,
 			"status": status,
 		})
 	} else if cmdName == "MGET" {
 		if currRespD.IsError() {
-			params = append(params, map[string]interface{}{
-				"key":    0,
+			stat = append(stat, map[string]interface{}{
+				"key":    "",
 				"status": KeyError,
 			})
 		} else {
@@ -152,15 +161,47 @@ func KeyHitAnalyze(lastRespD, currRespD *RespData) map[string]interface{} {
 				} else {
 					status = KeyHit
 				}
-				params = append(params, map[string]interface{}{
+				stat = append(stat, map[string]interface{}{
 					"key":    key,
 					"status": status,
 				})
 			}
 		}
 	}
-	return map[string]interface{}{
-		"cmd":    cmdName,
-		"params": params,
+	if len(stat) == 0 {
+		return nil
 	}
+	return stat
+}
+
+func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) map[string]interface{} {
+	cmd, _ := lastRespD.GetCommand()
+	cmdName := strings.ToUpper(cmd.Name())
+	cmdType, ok := RedisCmds[cmdName]
+	if !ok {
+		return nil
+	}
+	result := make(map[string]interface{})
+	for _, saveCmdType := range config.SaveCmdTypes {
+		if cmdType == saveCmdType {
+			switch config.SaveDetail {
+			case RecordReply:
+				result[AnalyzeReply] = string(currRespD.Msg.Bytes)
+				fallthrough
+			case RecordParams:
+				result[AnalyzeParams] = cmd.Args[1:]
+				fallthrough
+			case RecordCmdOnly:
+				result[AnalyzeCmd] = cmdName
+				result[AnalyzeCmdType] = cmdType
+			}
+			if config.ReadHitAnalyze && cmdType == RedisCmdRead {
+				stat := KeyHitAnalyze(cmd, cmdName, currRespD)
+				if stat != nil {
+					result[AnalyzeStat] = stat
+				}
+			}
+		}
+	}
+	return result
 }
