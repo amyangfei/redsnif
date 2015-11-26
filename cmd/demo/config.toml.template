@@ -8,3 +8,8 @@ UseZeroCopy = true
 [Redis]
 Host = '172.17.42.1'
 Port = 6379
+
+[Analyze]
+ReadHitAnalyze = true
+SaveCmdTypes = [1, 2, 3]
+SaveDetail = 3

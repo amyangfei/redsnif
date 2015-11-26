@@ -5,5 +5,6 @@ const (
 	AnalyzeCmdType = "type"
 	AnalyzeParams  = "params"
 	AnalyzeReply   = "reply"
+	AnalyzeRequest = "request"
 	AnalyzeStat    = "stat"
 )

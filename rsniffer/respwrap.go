@@ -6,37 +6,43 @@ import (
 )
 
 const (
-	RecordCmdOnly = iota
+	RecordCmdOnly = iota + 1
 	RecordParams
 	RecordReply
+	RecordRequest
 )
 
 const (
-	KeyHit = iota
+	KeyHit = iota + 1
 	KeyMiss
 	KeyError
 )
 
 const (
-	RedisCmdRead = iota
+	RedisCmdRead = iota + 1
 	RedisCmdWrite
-	RedisCmdReadWrite
 	RedisCmdFunc
 )
 
 var RedisCmds map[string]int = map[string]int{
-	"GET": RedisCmdRead,
-	//"GETBIT":   RedisCmdRead,
-	//"GETRANGE": RedisCmdRead,
-	//"HGET":     RedisCmdRead,
-	//"HGETALL":  RedisCmdRead,
+	"GET":     RedisCmdRead,
+	"HGET":    RedisCmdRead,
+	"HGETALL": RedisCmdRead,
 	//"HLEN":     RedisCmdRead,
 	//"HMGET":    RedisCmdRead,
 	//"HSTRLEN":  RedisCmdRead,
 	//"LINDEX":   RedisCmdRead,
-	//"LLEN":     RedisCmdRead,
-	//"LRANGE":   RedisCmdRead,
-	"MGET": RedisCmdRead,
+	"LLEN":   RedisCmdRead,
+	"LRANGE": RedisCmdRead,
+	"MGET":   RedisCmdRead,
+
+	"INFO":  RedisCmdFunc,
+	"MULTI": RedisCmdFunc,
+
+	"SET":   RedisCmdWrite,
+	"LPUSH": RedisCmdWrite,
+	"RPUSH": RedisCmdWrite,
+	"MSET":  RedisCmdWrite,
 }
 
 var MsgTypeMapping = map[byte]string{
@@ -63,7 +69,8 @@ func (c *Command) Name() string {
 }
 
 type RespData struct {
-	Msg *resp.Message
+	Msg       *resp.Message
+	RawPacket *PacketInfo
 }
 
 func (rd *RespData) MsgType() string {

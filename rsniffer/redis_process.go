@@ -116,7 +116,8 @@ func PacketProcess(packet gopacket.Packet, sp *SessionPool, cfg *SniffConfig) *P
 
 func (pinfo *PacketInfo) GetRespData() (*RespData, error) {
 	rd := &RespData{
-		Msg: &resp.Message{},
+		Msg:       &resp.Message{},
+		RawPacket: pinfo,
 	}
 	if err := resp.Unmarshal(pinfo.Payload, rd.Msg); err != nil {
 		return nil, err
@@ -185,8 +186,10 @@ func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) map[
 	for _, saveCmdType := range config.SaveCmdTypes {
 		if cmdType == saveCmdType {
 			switch config.SaveDetail {
+			case RecordRequest:
+				result[AnalyzeRequest] = string(lastRespD.RawPacket.Payload)
 			case RecordReply:
-				result[AnalyzeReply] = string(currRespD.Msg.Bytes)
+				result[AnalyzeReply] = string(currRespD.RawPacket.Payload)
 				fallthrough
 			case RecordParams:
 				result[AnalyzeParams] = cmd.Args[1:]

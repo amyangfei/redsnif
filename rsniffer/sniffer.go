@@ -16,6 +16,24 @@ type SniffConfig struct {
 	Host        string
 	Port        int
 	UseZeroCopy bool
+	AzConfig    *AnalyzeConfig
+}
+
+func DefaultSniffConfig() *SniffConfig {
+	return &SniffConfig{
+		Device:      "eth0",
+		Snaplen:     1500,
+		Promiscuous: true,
+		Timeout:     time.Duration(3 * time.Second),
+		UseZeroCopy: true,
+		Host:        "127.0.0.1",
+		Port:        6379,
+		AzConfig: &AnalyzeConfig{
+			ReadHitAnalyze: true,
+			SaveCmdTypes:   []int{RedisCmdRead},
+			SaveDetail:     RecordCmdOnly,
+		},
+	}
 }
 
 func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo, ec chan error) {

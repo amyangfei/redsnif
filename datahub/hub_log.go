@@ -65,7 +65,7 @@ func (lh *LogHubber) AnalyzePacketInfo(pinfo *rsniffer.PacketInfo) {
 	} else {
 		// last packet contains redis command
 		if session.lastPacket.IsReq && session.lastResp.IsArray() {
-			fields := rsniffer.RespDataAnalyze(session.lastResp, respData, rsniffer.BasicAnalyzeConfig)
+			fields := rsniffer.RespDataAnalyze(session.lastResp, respData, lh.snifcfg.AzConfig)
 			if fields != nil {
 				lh.logger.WithFields(fields).Info("log_hub basic")
 			}
