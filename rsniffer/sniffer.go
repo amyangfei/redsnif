@@ -13,9 +13,10 @@ type SniffConfig struct {
 	Snaplen     int32
 	Promiscuous bool
 	Timeout     time.Duration
+	UseZeroCopy bool
 	Host        string
 	Port        int
-	UseZeroCopy bool
+	MaxBufSize  int
 	AzConfig    *AnalyzeConfig
 }
 
@@ -28,6 +29,7 @@ func DefaultSniffConfig() *SniffConfig {
 		UseZeroCopy: true,
 		Host:        "127.0.0.1",
 		Port:        6379,
+		MaxBufSize:  10240,
 		AzConfig: &AnalyzeConfig{
 			ReadHitAnalyze: true,
 			SaveCmdTypes:   []int{RedisCmdRead},
@@ -36,7 +38,7 @@ func DefaultSniffConfig() *SniffConfig {
 	}
 }
 
-func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo, ec chan error) {
+func PacketSniff(snifCfg *SniffConfig, c chan *RedSession, ec chan error) {
 	// Open device
 	handle, err := pcap.OpenLive(
 		snifCfg.Device, snifCfg.Snaplen, snifCfg.Promiscuous, snifCfg.Timeout)
@@ -54,22 +56,26 @@ func PacketSniff(snifCfg *SniffConfig, c chan *PacketInfo, ec chan error) {
 		return
 	}
 
-	sp := NewSessionPool()
+	sp := NewRedSessionPool()
 
 	if snifCfg.UseZeroCopy {
 		packetSource := NewZeroCopyPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			pinfo := PacketProcess(packet, sp, snifCfg)
-			if pinfo != nil {
-				c <- pinfo
+			rs, err := PacketProcess(packet, sp, snifCfg)
+			if err != nil {
+				ec <- err
+			} else if rs != nil {
+				c <- rs
 			}
 		}
 	} else {
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			pinfo := PacketProcess(packet, sp, snifCfg)
-			if pinfo != nil {
-				c <- pinfo
+			rs, err := PacketProcess(packet, sp, snifCfg)
+			if err != nil {
+				ec <- err
+			} else if rs != nil {
+				c <- rs
 			}
 		}
 	}

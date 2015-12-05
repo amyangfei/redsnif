@@ -18,7 +18,7 @@ check_install_local() {
 
 install_remote_dep() {
     go get -u -v github.com/google/gopacket
-    go get -u -v github.com/xiam/resp
+    go get -u -v github.com/amyangfei/resp-go/resp
     go get -u -v github.com/koding/multiconfig
     go get -u -v github.com/Sirupsen/logrus
 }

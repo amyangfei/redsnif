@@ -10,7 +10,7 @@ import (
 type LogHubber struct {
 	logger   *logrus.Logger
 	snifcfg  *rsniffer.SniffConfig
-	sessions map[string]*RedisSession
+	sessions map[string]*LogHubSession
 }
 
 type LogHubConfig struct {
@@ -18,10 +18,10 @@ type LogHubConfig struct {
 	Format logrus.Formatter
 }
 
-type RedisSession struct {
-	sid        string
-	lastPacket *rsniffer.PacketInfo
-	lastResp   *rsniffer.RespData
+type LogHubSession struct {
+	sid           string
+	queuedRequest []*rsniffer.RespData
+	queuedReply   []*rsniffer.RespData
 }
 
 func NewLogHubber(snifcfg *rsniffer.SniffConfig, hubcfg *LogHubConfig) *LogHubber {
@@ -31,46 +31,57 @@ func NewLogHubber(snifcfg *rsniffer.SniffConfig, hubcfg *LogHubConfig) *LogHubbe
 	}
 	lh.logger.Out = hubcfg.Output
 	lh.logger.Formatter = hubcfg.Format
-	lh.sessions = map[string]*RedisSession{}
+	lh.sessions = map[string]*LogHubSession{}
 	return lh
 }
 
 func (lh *LogHubber) Run() error {
-	c := make(chan *rsniffer.PacketInfo)
+	c := make(chan *rsniffer.RedSession)
 	ec := make(chan error)
 	go rsniffer.PacketSniff(lh.snifcfg, c, ec)
 	for {
 		select {
 		case err := <-ec:
 			return err
-		case info := <-c:
-			lh.AnalyzePacketInfo(info)
+		case rs := <-c:
+			lh.AnalyzePacketInfo(rs)
 		}
 	}
 	return nil
 }
 
-func (lh *LogHubber) AnalyzePacketInfo(pinfo *rsniffer.PacketInfo) {
-	respData, err := pinfo.GetRespData()
+func (lh *LogHubber) AnalyzePacketInfo(rs *rsniffer.RedSession) {
+	request, reply, err := rs.GetRespData()
 	if err != nil {
 		log.Panicf("get respdata error: %v", err)
 	}
 
-	if session, ok := lh.sessions[string(pinfo.SessionID)]; !ok {
-		lh.sessions[string(pinfo.SessionID)] = &RedisSession{
-			sid:        string(pinfo.SessionID),
-			lastPacket: pinfo,
-			lastResp:   respData,
+	if _, ok := lh.sessions[string(rs.ID)]; !ok {
+		lh.sessions[string(rs.ID)] = &LogHubSession{
+			queuedRequest: make([]*rsniffer.RespData, 0),
+			queuedReply:   make([]*rsniffer.RespData, 0),
 		}
-	} else {
-		// last packet contains redis command
-		if session.lastPacket.IsReq && session.lastResp.IsArray() {
-			fields := rsniffer.RespDataAnalyze(session.lastResp, respData, lh.snifcfg.AzConfig)
-			if fields != nil {
-				lh.logger.WithFields(fields).Info("log_hub basic")
-			}
+	}
+	lhs := lh.sessions[string(rs.ID)]
+	if request != nil && len(request) > 0 {
+		lhs.queuedRequest = append(lhs.queuedRequest, request...)
+	}
+	if reply != nil && len(reply) > 0 {
+		lhs.queuedReply = append(lhs.queuedReply, reply...)
+	}
+
+	// the length of queuedRequest should be always no smaller than the count of queuedReply
+	replyCount := len(lhs.queuedReply)
+	for i := 0; i < replyCount; i++ {
+		var reqRD, repRD *rsniffer.RespData
+		reqRD, lhs.queuedRequest = lhs.queuedRequest[0], lhs.queuedRequest[1:]
+		repRD, lhs.queuedReply = lhs.queuedReply[0], lhs.queuedReply[1:]
+		fields, err := rsniffer.RespDataAnalyze(reqRD, repRD, lh.snifcfg.AzConfig)
+		if fields != nil {
+			lh.logger.WithFields(fields).Info("log_hub basic")
 		}
-		session.lastPacket = pinfo
-		session.lastResp = respData
+		if err != nil {
+			lh.logger.Errorf("log_hub basic error: %v", err)
+		}
 	}
 }

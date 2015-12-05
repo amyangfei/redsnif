@@ -23,8 +23,9 @@ type (
 		UseZeroCopy bool   `default:"true"`
 	}
 	Redis struct {
-		Host string `required:"true"`
-		Port int    `required:"true"`
+		Host       string `required:"true"`
+		Port       int    `required:"true"`
+		MaxBufSize int    `default:"3000"`
 	}
 	Analyze struct {
 		ReadHitAnalyze bool  `default:"true"`
@@ -48,6 +49,7 @@ func initConfig(configFile string) error {
 	Config.UseZeroCopy = mcfg.Network.UseZeroCopy
 	Config.Host = mcfg.Redis.Host
 	Config.Port = mcfg.Redis.Port
+	Config.MaxBufSize = mcfg.Redis.MaxBufSize
 	Config.AzConfig = &redsnif.AnalyzeConfig{
 		ReadHitAnalyze: mcfg.Analyze.ReadHitAnalyze,
 		SaveCmdTypes:   mcfg.Analyze.SaveCmdTypes,

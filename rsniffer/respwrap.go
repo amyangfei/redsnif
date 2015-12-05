@@ -2,26 +2,7 @@ package rsniffer
 
 import (
 	"errors"
-	"github.com/xiam/resp"
-)
-
-const (
-	RecordCmdOnly = iota + 1
-	RecordParams
-	RecordReply
-	RecordRequest
-)
-
-const (
-	KeyHit = iota + 1
-	KeyMiss
-	KeyError
-)
-
-const (
-	RedisCmdRead = iota + 1
-	RedisCmdWrite
-	RedisCmdFunc
+	"github.com/amyangfei/resp-go/resp"
 )
 
 var RedisCmds map[string]int = map[string]int{
@@ -69,8 +50,7 @@ func (c *Command) Name() string {
 }
 
 type RespData struct {
-	Msg       *resp.Message
-	RawPacket *PacketInfo
+	Msg *resp.Message
 }
 
 func (rd *RespData) MsgType() string {
@@ -106,4 +86,8 @@ func (rd *RespData) GetCommand() (*Command, error) {
 		args[idx] = string(arg.Bytes)
 	}
 	return NewCommand(args...)
+}
+
+func (rd *RespData) RawPayload() []byte {
+	return []byte("")
 }

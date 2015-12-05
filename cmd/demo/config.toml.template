@@ -8,6 +8,7 @@ UseZeroCopy = true
 [Redis]
 Host = '172.17.42.1'
 Port = 6379
+MaxBufSize = 10240
 
 [Analyze]
 ReadHitAnalyze = true

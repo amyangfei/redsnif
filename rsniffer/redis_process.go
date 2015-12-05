@@ -3,11 +3,12 @@ package rsniffer
 import (
 	"crypto/md5"
 	"fmt"
+	"github.com/amyangfei/resp-go/resp"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/xiam/resp"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,106 +24,149 @@ var BasicAnalyzeConfig *AnalyzeConfig = &AnalyzeConfig{
 	SaveDetail:     RecordParams,
 }
 
-type PacketInfo struct {
-	Seq       int
-	SessionID []byte
-	SrcIP     net.IP
-	DstIP     net.IP
-	SrcPort   layers.TCPPort
-	DstPort   layers.TCPPort
-	Payload   []byte
-	IsReq     bool
-	err       error
-}
-
-type Session struct {
+type RedSession struct {
 	ID      []byte
-	counter int
-	created int64
+	Counter int
+	Created int64
+	SrcIP   net.IP
+	DstIP   net.IP
+	SrcPort layers.TCPPort
+	DstPort layers.TCPPort
+	RBuf    []byte // data buffer for request from client to redis
+	WBuf    []byte // data buffer for reply from redis to client
+	REnd    int    // the last process byte index of RBuf
+	WEnd    int    // the last process byte index of WBuf
+	mu      sync.Mutex
 }
 
-type SessionPool struct {
-	sessions map[string]*Session
+type RedSessionPool struct {
+	sessions map[string]*RedSession
 }
 
-func NewSessionPool() *SessionPool {
-	return &SessionPool{
-		sessions: map[string]*Session{},
+func NewRedSessionPool() *RedSessionPool {
+	return &RedSessionPool{
+		sessions: map[string]*RedSession{},
 	}
 }
 
-func (sp *SessionPool) GetSession(packet *PacketInfo, cfg *SniffConfig) *Session {
-	key, _ := TCPIdentify(packet.SrcIP, packet.DstIP, packet.SrcPort, packet.DstPort, cfg.Host, cfg.Port)
+func (sp *RedSessionPool) GetRedSession(tcpMeta *TCPMeta, cfg *SniffConfig) *RedSession {
+	if tcpMeta == nil {
+		return nil
+	}
+	key := TCPIdentify(tcpMeta, cfg.Host, cfg.Port)
 	if _, ok := sp.sessions[key]; !ok {
 		now := time.Now().Unix()
 		h := md5.New()
 		idstr := fmt.Sprintf("%s-%d", key, now)
 		h.Write([]byte(idstr))
-		sp.sessions[key] = &Session{
+		sp.sessions[key] = &RedSession{
 			ID:      h.Sum(nil),
-			counter: 0,
-			created: time.Now().Unix(),
+			Counter: 0,
+			Created: time.Now().Unix(),
+			SrcIP:   tcpMeta.SrcIP,
+			DstIP:   tcpMeta.DstIP,
+			SrcPort: tcpMeta.SrcPort,
+			DstPort: tcpMeta.DstPort,
+			RBuf:    make([]byte, cfg.Snaplen*2),
+			WBuf:    make([]byte, cfg.Snaplen*2),
+			REnd:    0,
+			WEnd:    0,
+			mu:      new(sync.Mutex),
 		}
 	}
 	session := sp.sessions[key]
-	session.counter++
+	session.Counter++
 	return session
 }
 
-func (sp *SessionPool) RemoveSession(key string) {
+func (sp *RedSessionPool) RemoveRedSession(key string) {
 	delete(sp.sessions, key)
 }
 
-func PacketProcess(packet gopacket.Packet, sp *SessionPool, cfg *SniffConfig) *PacketInfo {
+func PacketProcess(packet gopacket.Packet, sp *RedSessionPool, cfg *SniffConfig) (*RedSession, error) {
 	tcpLayer := packet.Layer(layers.LayerTypeTCP)
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
-	var SrcIP, DstIP net.IP
-	var SrcPort, DstPort layers.TCPPort
+	var tcpMeta *TCPMeta = nil
 	if tcpLayer != nil && ipLayer != nil {
 		tcp, _ := tcpLayer.(*layers.TCP)
 		ip, _ := ipLayer.(*layers.IPv4)
-		SrcIP, DstIP = ip.SrcIP, ip.DstIP
-		SrcPort, DstPort = tcp.SrcPort, tcp.DstPort
+		tcpMeta = &TCPMeta{
+			SrcIP:   ip.SrcIP,
+			DstIP:   ip.DstIP,
+			SrcPort: tcp.SrcPort,
+			DstPort: tcp.DstPort,
+		}
 		if tcp.FIN {
-			sessionKey, _ := TCPIdentify(SrcIP, DstIP, SrcPort, DstPort, cfg.Host, cfg.Port)
-			sp.RemoveSession(sessionKey)
-			return nil
+			sessionKey := TCPIdentify(tcpMeta, cfg.Host, cfg.Port)
+			sp.RemoveRedSession(sessionKey)
+			return nil, RedSessionCloseErr
 		}
 	}
 
 	// Check application Layer
 	applicationLayer := packet.ApplicationLayer()
 	if applicationLayer != nil {
-		pinfo := &PacketInfo{
-			Payload: applicationLayer.Payload(),
+		session := sp.GetRedSession(tcpMeta, cfg)
+		fromCliToRedis := tcpMeta.FromSrcToDst(cfg.Host, cfg.Port)
+		payload := applicationLayer.Payload()
+		if fromCliToRedis {
+			err := session.AppendRequestData(payload)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			err := session.AppendReplyData(payload)
+			if err != nil {
+				return nil, err
+			}
 		}
-		pinfo.SrcIP = SrcIP
-		pinfo.DstIP = DstIP
-		pinfo.SrcPort = SrcPort
-		pinfo.DstPort = DstPort
-		// Check for errors
-		if err := packet.ErrorLayer(); err != nil {
-			pinfo.err = err.Error()
-		}
-		session := sp.GetSession(pinfo, cfg)
-		pinfo.Seq = session.counter
-		pinfo.SessionID = session.ID
-		pinfo.IsReq = (pinfo.DstIP.String() == cfg.Host) &&
-			(int(pinfo.DstPort) == cfg.Port)
-		return pinfo
+		return session, nil
 	}
+	return nil, nil
+}
+
+func (rs *RedSession) AppendRequestData(payload []byte) error {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.REnd+len(payload) > len(rs.RBuf) {
+		return fmt.Errorf("data %d exceed max RBuf size", rs.REnd+len(payload))
+	}
+	// TODO: no copy support?
+	copy(rs.RBuf[rs.REnd:], payload)
+	rs.REnd += len(payload)
 	return nil
 }
 
-func (pinfo *PacketInfo) GetRespData() (*RespData, error) {
-	rd := &RespData{
-		Msg:       &resp.Message{},
-		RawPacket: pinfo,
+func (rs *RedSession) AppendReplyData(payload []byte) error {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.WEnd+len(payload) > len(rs.WBuf) {
+		return fmt.Errorf("data %d exceed max WBuf size", rs.WEnd+len(payload))
 	}
-	if err := resp.Unmarshal(pinfo.Payload, rd.Msg); err != nil {
-		return nil, err
+	// TODO: no copy support?
+	copy(rs.WBuf[rs.WEnd:], payload)
+	rs.WEnd += len(payload)
+	return nil
+}
+
+func (rs *RedSession) GetRespData() (request, reply []*RespData, err error) {
+	reqMsgs, pos, err := resp.Decode(rs.RBuf[0:rs.REnd])
+	request = make([]*RespData, 0)
+	for _, msg := range reqMsgs {
+		request = append(request, &RespData{Msg: msg})
 	}
-	return rd, nil
+	copy(rs.RBuf, rs.RBuf[pos:rs.REnd])
+	rs.REnd = rs.REnd - pos
+
+	replyMsgs, pos, err := resp.Decode(rs.WBuf[0:rs.WEnd])
+	reply = make([]*RespData, 0)
+	for _, msg := range replyMsgs {
+		reply = append(reply, &RespData{Msg: msg})
+	}
+	copy(rs.WBuf, rs.RBuf[pos:rs.WEnd])
+	rs.WEnd = rs.WEnd - pos
+
+	return request, reply, nil
 }
 
 // cmd: a Command struct represents client request to redis
@@ -175,21 +219,24 @@ func KeyHitAnalyze(cmd *Command, cmdName string, currRespD *RespData) []map[stri
 	return stat
 }
 
-func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) map[string]interface{} {
-	cmd, _ := lastRespD.GetCommand()
+func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) (map[string]interface{}, error) {
+	cmd, err := lastRespD.GetCommand()
+	if err != nil {
+		return nil, err
+	}
 	cmdName := strings.ToUpper(cmd.Name())
 	cmdType, ok := RedisCmds[cmdName]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	result := make(map[string]interface{})
 	for _, saveCmdType := range config.SaveCmdTypes {
 		if cmdType == saveCmdType {
 			switch config.SaveDetail {
 			case RecordRequest:
-				result[AnalyzeRequest] = string(lastRespD.RawPacket.Payload)
+				result[AnalyzeRequest] = string(lastRespD.RawPayload())
 			case RecordReply:
-				result[AnalyzeReply] = string(currRespD.RawPacket.Payload)
+				result[AnalyzeReply] = string(currRespD.RawPayload())
 				fallthrough
 			case RecordParams:
 				result[AnalyzeParams] = cmd.Args[1:]
@@ -206,5 +253,5 @@ func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) map[
 			}
 		}
 	}
-	return result
+	return result, nil
 }
