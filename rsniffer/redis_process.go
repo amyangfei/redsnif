@@ -149,6 +149,9 @@ func (rs *RedSession) AppendReplyData(payload []byte) error {
 }
 
 func (rs *RedSession) GetRespData() (request, reply []*RespData, err error) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
 	reqMsgs, pos, err := resp.Decode(rs.RBuf[0:rs.REnd])
 	request = make([]*RespData, 0)
 	for _, msg := range reqMsgs {
