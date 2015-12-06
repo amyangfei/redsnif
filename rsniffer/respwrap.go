@@ -88,6 +88,6 @@ func (rd *RespData) GetCommand() (*Command, error) {
 	return NewCommand(args...)
 }
 
-func (rd *RespData) RawPayload() []byte {
-	return []byte("")
+func (rd *RespData) RawPayload() ([]byte, error) {
+	return resp.Marshal(rd.Msg)
 }

@@ -71,7 +71,6 @@ func (sp *RedSessionPool) GetRedSession(tcpMeta *TCPMeta, cfg *SniffConfig) *Red
 			WBuf:    make([]byte, cfg.Snaplen*2),
 			REnd:    0,
 			WEnd:    0,
-			mu:      new(sync.Mutex),
 		}
 	}
 	session := sp.sessions[key]
@@ -234,9 +233,14 @@ func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) (map
 		if cmdType == saveCmdType {
 			switch config.SaveDetail {
 			case RecordRequest:
-				result[AnalyzeRequest] = string(lastRespD.RawPayload())
+				// ignore error
+				raw, _ := lastRespD.RawPayload()
+				result[AnalyzeRequest] = string(raw)
+				fallthrough
 			case RecordReply:
-				result[AnalyzeReply] = string(currRespD.RawPayload())
+				// ignore error
+				raw, _ := currRespD.RawPayload()
+				result[AnalyzeReply] = string(raw)
 				fallthrough
 			case RecordParams:
 				result[AnalyzeParams] = cmd.Args[1:]
