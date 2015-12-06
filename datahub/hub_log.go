@@ -42,7 +42,10 @@ func (lh *LogHubber) Run() error {
 	for {
 		select {
 		case err := <-ec:
-			return err
+			// ignore redis session close error
+			if err != rsniffer.RedSessionCloseErr {
+				return err
+			}
 		case rs := <-c:
 			lh.AnalyzePacketInfo(rs)
 		}
