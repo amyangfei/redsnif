@@ -11,6 +11,7 @@ const (
 	AnalyzeReply   = "reply"
 	AnalyzeRequest = "request"
 	AnalyzeStat    = "stat"
+	AnalyzeMesg    = "mesg"
 )
 
 var (

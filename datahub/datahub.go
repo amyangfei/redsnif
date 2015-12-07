@@ -3,6 +3,7 @@ package datahub
 import (
 	"fmt"
 	"github.com/amyangfei/redsnif/rsniffer"
+	"strings"
 )
 
 const (
@@ -27,9 +28,11 @@ type BaseHub struct {
 }
 
 type HubSession struct {
-	sid           string
-	queuedRequest []*rsniffer.RespData
-	queuedReply   []*rsniffer.RespData
+	sid            string
+	queuedRequest  []*rsniffer.RespData
+	queuedReply    []*rsniffer.RespData
+	flags          int // REDIS_MULTI | REDIS_PUBSUB ...
+	multiQueuedReq []*rsniffer.RespData
 }
 
 func NewBaseHub(snifcfg *rsniffer.SniffConfig) *BaseHub {
@@ -48,8 +51,9 @@ func (hub *BaseHub) AnalyzePacketInfo(rs *rsniffer.RedSession, handler AnalyzeRe
 
 	if _, ok := hub.sessions[string(rs.ID)]; !ok {
 		hub.sessions[string(rs.ID)] = &HubSession{
-			queuedRequest: make([]*rsniffer.RespData, 0),
-			queuedReply:   make([]*rsniffer.RespData, 0),
+			queuedRequest:  make([]*rsniffer.RespData, 0),
+			queuedReply:    make([]*rsniffer.RespData, 0),
+			multiQueuedReq: make([]*rsniffer.RespData, 0),
 		}
 	}
 	hs := hub.sessions[string(rs.ID)]
@@ -66,6 +70,56 @@ func (hub *BaseHub) AnalyzePacketInfo(rs *rsniffer.RedSession, handler AnalyzeRe
 		var reqRD, replyRD *rsniffer.RespData
 		reqRD, hs.queuedRequest = hs.queuedRequest[0], hs.queuedRequest[1:]
 		replyRD, hs.queuedReply = hs.queuedReply[0], hs.queuedReply[1:]
+
+		// client request itself to redis with error
+		cmd, err := reqRD.GetCommand()
+		if err != nil {
+			handler(nil, err)
+			continue
+		}
+		// client request to redis with error
+		if replyRD.IsError() {
+			fields, err := rsniffer.RespErrorAnalyze(reqRD, replyRD, hub.snifcfg.AzConfig)
+			handler(fields, err)
+			continue
+		}
+		// start a transaction
+		cmdName := strings.ToUpper(cmd.Name())
+		if cmdName == "MULTI" && replyRD.IsString() && replyRD.Msg.Status == "OK" {
+			hs.multiQueuedReq = make([]*rsniffer.RespData, 0)
+			hs.flags |= RedisMulti
+			continue
+		}
+		// redis session is in transaction
+		if hs.flags&RedisMulti > 0 {
+			if cmdName == "DISCARD" {
+				// discard a transaction
+				handler(map[string]interface{}{rsniffer.AnalyzeMesg: "transaction discard"}, nil)
+				hs.flags &= ^RedisMulti
+				continue
+			} else if cmdName == "EXEC" {
+				// exec a transaction
+				if !replyRD.IsArray() || len(replyRD.Msg.Array) != len(hs.multiQueuedReq) {
+					hs.flags &= ^RedisMulti
+					handler(nil, fmt.Errorf("multi result count doesn't match queued requests"))
+					continue
+				}
+				for j := 0; j < len(hs.multiQueuedReq); j++ {
+					tReq := hs.multiQueuedReq[j]
+					tReply := &rsniffer.RespData{Msg: replyRD.Msg.Array[j]}
+					fields, err := rsniffer.RespDataAnalyze(tReq, tReply, hub.snifcfg.AzConfig)
+					handler(fields, err)
+				}
+				hs.flags &= ^RedisMulti
+				continue
+			} else {
+				// redis command queued
+				hs.multiQueuedReq = append(hs.multiQueuedReq, reqRD)
+				continue
+			}
+		}
+
+		// normal request and reply
 		fields, err := rsniffer.RespDataAnalyze(reqRD, replyRD, hub.snifcfg.AzConfig)
 		handler(fields, err)
 	}

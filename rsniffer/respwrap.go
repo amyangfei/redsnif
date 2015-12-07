@@ -17,13 +17,17 @@ var RedisCmds map[string]int = map[string]int{
 	"LRANGE": RedisCmdRead,
 	"MGET":   RedisCmdRead,
 
-	"INFO":  RedisCmdFunc,
-	"MULTI": RedisCmdFunc,
+	"INFO":    RedisCmdFunc,
+	"DBSIZE":  RedisCmdFunc,
+	"MULTI":   RedisCmdFunc,
+	"EXEC":    RedisCmdFunc,
+	"DISCARD": RedisCmdFunc,
 
-	"SET":   RedisCmdWrite,
-	"LPUSH": RedisCmdWrite,
-	"RPUSH": RedisCmdWrite,
-	"MSET":  RedisCmdWrite,
+	"SET":    RedisCmdWrite,
+	"LPUSH":  RedisCmdWrite,
+	"RPUSH":  RedisCmdWrite,
+	"MSET":   RedisCmdWrite,
+	"INCRBY": RedisCmdWrite,
 }
 
 var MsgTypeMapping = map[byte]string{

@@ -221,6 +221,45 @@ func KeyHitAnalyze(cmd *Command, cmdName string, currRespD *RespData) []map[stri
 	return stat
 }
 
+// RespErrorAnalyze deals with command executes with error
+func RespErrorAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) (map[string]interface{}, error) {
+	cmd, err := lastRespD.GetCommand()
+	if err != nil {
+		return nil, err
+	}
+	cmdName := strings.ToUpper(cmd.Name())
+	cmdType, ok := RedisCmds[cmdName]
+	if !ok {
+		return nil, currRespD.Msg.Error
+	}
+	result := make(map[string]interface{})
+	for _, saveCmdType := range config.SaveCmdTypes {
+		if cmdType == saveCmdType {
+			switch config.SaveDetail {
+			case RecordRequest:
+				// ignore error
+				raw, _ := lastRespD.RawPayload()
+				result[AnalyzeRequest] = string(raw)
+				fallthrough
+			case RecordReply:
+				// ignore error
+				raw, _ := currRespD.RawPayload()
+				result[AnalyzeReply] = string(raw)
+				fallthrough
+			case RecordParams:
+				result[AnalyzeParams] = cmd.Args[1:]
+				fallthrough
+			case RecordCmdOnly:
+				result[AnalyzeCmd] = cmdName
+				result[AnalyzeCmdType] = cmdType
+			}
+			return result, currRespD.Msg.Error
+		}
+	}
+	return nil, currRespD.Msg.Error
+}
+
+// RespDataAnalyze deals with command executes normaly
 func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) (map[string]interface{}, error) {
 	cmd, err := lastRespD.GetCommand()
 	if err != nil {
@@ -258,6 +297,7 @@ func RespDataAnalyze(lastRespD, currRespD *RespData, config *AnalyzeConfig) (map
 					result[AnalyzeStat] = stat
 				}
 			}
+			break
 		}
 	}
 	return result, nil
