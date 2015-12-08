@@ -23,7 +23,7 @@ type HubConfig struct {
 type AnalyzeResultHandler func(map[string]interface{}, error)
 
 type BaseHub struct {
-	snifcfg  *rsniffer.SniffConfig
+	s        *rsniffer.Sniffer
 	sessions map[string]*HubSession
 }
 
@@ -37,7 +37,7 @@ type HubSession struct {
 
 func NewBaseHub(snifcfg *rsniffer.SniffConfig) *BaseHub {
 	return &BaseHub{
-		snifcfg:  snifcfg,
+		s:        rsniffer.NewSniffer(snifcfg),
 		sessions: map[string]*HubSession{},
 	}
 }
@@ -67,6 +67,13 @@ func (hub *BaseHub) AnalyzePacketInfo(rs *rsniffer.RedSession, handler AnalyzeRe
 	// the length of queuedRequest should be always no smaller than the count of queuedReply
 	replyCount := len(hs.queuedReply)
 	for i := 0; i < replyCount; i++ {
+		if len(hs.queuedRequest) == 0 {
+			//replyLen := replyCount - i
+			//raw, _ := hs.queuedReply[0].RawPayload()
+			//fmt.Printf("%d raw: %s rawstr: %s\n", replyLen, raw, string(raw))
+			// fmt.Printf("rcounter: %d wcounter: %d rsize: %d wsize: %d\n", hub.s.RCounter, hub.s.WCounter, hub.s.RSize, hub.s.WSize)
+			break
+		}
 		var reqRD, replyRD *rsniffer.RespData
 		reqRD, hs.queuedRequest = hs.queuedRequest[0], hs.queuedRequest[1:]
 		replyRD, hs.queuedReply = hs.queuedReply[0], hs.queuedReply[1:]
@@ -79,7 +86,7 @@ func (hub *BaseHub) AnalyzePacketInfo(rs *rsniffer.RedSession, handler AnalyzeRe
 		}
 		// client request to redis with error
 		if replyRD.IsError() {
-			fields, err := rsniffer.RespErrorAnalyze(reqRD, replyRD, hub.snifcfg.AzConfig)
+			fields, err := rsniffer.RespErrorAnalyze(reqRD, replyRD, hub.s.Config.AzConfig)
 			handler(fields, err)
 			continue
 		}
@@ -107,7 +114,7 @@ func (hub *BaseHub) AnalyzePacketInfo(rs *rsniffer.RedSession, handler AnalyzeRe
 				for j := 0; j < len(hs.multiQueuedReq); j++ {
 					tReq := hs.multiQueuedReq[j]
 					tReply := &rsniffer.RespData{Msg: replyRD.Msg.Array[j]}
-					fields, err := rsniffer.RespDataAnalyze(tReq, tReply, hub.snifcfg.AzConfig)
+					fields, err := rsniffer.RespDataAnalyze(tReq, tReply, hub.s.Config.AzConfig)
 					handler(fields, err)
 				}
 				hs.flags &= ^RedisMulti
@@ -120,7 +127,7 @@ func (hub *BaseHub) AnalyzePacketInfo(rs *rsniffer.RedSession, handler AnalyzeRe
 		}
 
 		// normal request and reply
-		fields, err := rsniffer.RespDataAnalyze(reqRD, replyRD, hub.snifcfg.AzConfig)
+		fields, err := rsniffer.RespDataAnalyze(reqRD, replyRD, hub.s.Config.AzConfig)
 		handler(fields, err)
 	}
 }

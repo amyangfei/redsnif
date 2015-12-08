@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+type Sniffer struct {
+	Config   *SniffConfig
+	RCounter int64
+	WCounter int64
+	RSize    int64
+	WSize    int64
+}
+
 type SniffConfig struct {
 	Device      string
 	Snaplen     int32
@@ -18,6 +26,16 @@ type SniffConfig struct {
 	Port        int
 	MaxBufSize  int
 	AzConfig    *AnalyzeConfig
+}
+
+func NewSniffer(config *SniffConfig) *Sniffer {
+	return &Sniffer{
+		Config:   config,
+		RCounter: 0,
+		WCounter: 0,
+		RSize:    0,
+		WSize:    0,
+	}
 }
 
 func DefaultSniffConfig() *SniffConfig {
@@ -38,10 +56,11 @@ func DefaultSniffConfig() *SniffConfig {
 	}
 }
 
-func PacketSniff(snifCfg *SniffConfig, c chan *RedSession, ec chan error) {
+func (s *Sniffer) PacketSniff(c chan *RedSession, ec chan error) {
+	config := s.Config
 	// Open device
 	handle, err := pcap.OpenLive(
-		snifCfg.Device, snifCfg.Snaplen, snifCfg.Promiscuous, snifCfg.Timeout)
+		config.Device, config.Snaplen, config.Promiscuous, config.Timeout)
 	if err != nil {
 		ec <- err
 		return
@@ -49,7 +68,7 @@ func PacketSniff(snifCfg *SniffConfig, c chan *RedSession, ec chan error) {
 	defer handle.Close()
 
 	// Set filter
-	filter := fmt.Sprintf("host %s and port %d", snifCfg.Host, snifCfg.Port)
+	filter := fmt.Sprintf("host %s and port %d", config.Host, config.Port)
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
 		ec <- err
@@ -58,10 +77,17 @@ func PacketSniff(snifCfg *SniffConfig, c chan *RedSession, ec chan error) {
 
 	sp := NewRedSessionPool()
 
-	if snifCfg.UseZeroCopy {
+	ticker := time.NewTicker(time.Second * 2)
+	go func() {
+		for _ = range ticker.C {
+			fmt.Printf("rcounter: %d wcounter: %d rsize: %d wsize: %d\n", s.RCounter, s.WCounter, s.RSize, s.WSize)
+		}
+	}()
+
+	if config.UseZeroCopy {
 		packetSource := NewZeroCopyPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			rs, err := PacketProcess(packet, sp, snifCfg)
+			rs, err := PacketProcess(packet, sp, s)
 			if err != nil {
 				ec <- err
 			} else if rs != nil {
@@ -71,7 +97,7 @@ func PacketSniff(snifCfg *SniffConfig, c chan *RedSession, ec chan error) {
 	} else {
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			rs, err := PacketProcess(packet, sp, snifCfg)
+			rs, err := PacketProcess(packet, sp, s)
 			if err != nil {
 				ec <- err
 			} else if rs != nil {

@@ -29,7 +29,7 @@ func NewLogHubber(snifcfg *rsniffer.SniffConfig, hubcfg *LogHubConfig) *LogHubbe
 func (lh *LogHubber) Run() error {
 	c := make(chan *rsniffer.RedSession)
 	ec := make(chan error)
-	go rsniffer.PacketSniff(lh.hub.snifcfg, c, ec)
+	go lh.hub.s.PacketSniff(c, ec)
 	for {
 		select {
 		case err := <-ec:

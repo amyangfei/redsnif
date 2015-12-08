@@ -26,3 +26,15 @@ func TCPIdentify(tm *TCPMeta, Host string, Port int) string {
 		return fmt.Sprintf("%s:%d-%s:%d", tm.DstIP, tm.DstPort, tm.SrcIP, tm.SrcPort)
 	}
 }
+
+func DupIP(ip net.IP) net.IP {
+	dup := make(net.IP, len(ip))
+	copy(dup, ip)
+	return dup
+}
+
+func DupPort(port layers.TCPPort) layers.TCPPort {
+	var dup layers.TCPPort
+	dup = port
+	return dup
+}

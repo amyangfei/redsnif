@@ -67,8 +67,8 @@ func (sp *RedSessionPool) GetRedSession(tcpMeta *TCPMeta, cfg *SniffConfig) *Red
 			DstIP:   tcpMeta.DstIP,
 			SrcPort: tcpMeta.SrcPort,
 			DstPort: tcpMeta.DstPort,
-			RBuf:    make([]byte, cfg.Snaplen*2),
-			WBuf:    make([]byte, cfg.Snaplen*2),
+			RBuf:    make([]byte, cfg.Snaplen*4),
+			WBuf:    make([]byte, cfg.Snaplen*4),
 			REnd:    0,
 			WEnd:    0,
 		}
@@ -82,7 +82,7 @@ func (sp *RedSessionPool) RemoveRedSession(key string) {
 	delete(sp.sessions, key)
 }
 
-func PacketProcess(packet gopacket.Packet, sp *RedSessionPool, cfg *SniffConfig) (*RedSession, error) {
+func PacketProcess(packet gopacket.Packet, sp *RedSessionPool, s *Sniffer) (*RedSession, error) {
 	tcpLayer := packet.Layer(layers.LayerTypeTCP)
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	var tcpMeta *TCPMeta = nil
@@ -90,13 +90,13 @@ func PacketProcess(packet gopacket.Packet, sp *RedSessionPool, cfg *SniffConfig)
 		tcp, _ := tcpLayer.(*layers.TCP)
 		ip, _ := ipLayer.(*layers.IPv4)
 		tcpMeta = &TCPMeta{
-			SrcIP:   ip.SrcIP,
-			DstIP:   ip.DstIP,
-			SrcPort: tcp.SrcPort,
-			DstPort: tcp.DstPort,
+			SrcIP:   DupIP(ip.SrcIP),
+			DstIP:   DupIP(ip.DstIP),
+			SrcPort: DupPort(tcp.SrcPort),
+			DstPort: DupPort(tcp.DstPort),
 		}
 		if tcp.FIN {
-			sessionKey := TCPIdentify(tcpMeta, cfg.Host, cfg.Port)
+			sessionKey := TCPIdentify(tcpMeta, s.Config.Host, s.Config.Port)
 			sp.RemoveRedSession(sessionKey)
 			return nil, RedSessionCloseErr
 		}
@@ -105,15 +105,19 @@ func PacketProcess(packet gopacket.Packet, sp *RedSessionPool, cfg *SniffConfig)
 	// Check application Layer
 	applicationLayer := packet.ApplicationLayer()
 	if applicationLayer != nil {
-		session := sp.GetRedSession(tcpMeta, cfg)
-		fromCliToRedis := tcpMeta.FromSrcToDst(cfg.Host, cfg.Port)
+		session := sp.GetRedSession(tcpMeta, s.Config)
+		fromCliToRedis := tcpMeta.FromSrcToDst(s.Config.Host, s.Config.Port)
 		payload := applicationLayer.Payload()
 		if fromCliToRedis {
+			s.RCounter++
+			s.RSize += int64(len(payload))
 			err := session.AppendRequestData(payload)
 			if err != nil {
 				return nil, err
 			}
 		} else {
+			s.WCounter++
+			s.WSize += int64(len(payload))
 			err := session.AppendReplyData(payload)
 			if err != nil {
 				return nil, err
